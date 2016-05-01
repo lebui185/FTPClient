@@ -1,4 +1,5 @@
 #include <iostream>
+#include <fstream>
 #include <string>
 #include "FtpClient.h"
 using namespace std;
@@ -12,9 +13,17 @@ int main()
 	string username = "lebui";
 	string password = "123";
 
+	string localPath = "Mouse love rice.mp3";
+	string remotePath = "\"/Asian/Lao Shu Ai Da Mi.mp3\"";
+	ofstream ofs(localPath);
+
 	FtpClient ftpClient;
+
 	ftpClient.Connect(serverIP, SERVER_PORT, username, password);
 	ftpClient.ListDirectory(cout);
+	ftpClient.GetFile(ofs, remotePath);
+
+	ofs.close();
 
 	return 0;
 }

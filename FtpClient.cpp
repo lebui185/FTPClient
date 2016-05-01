@@ -6,13 +6,13 @@
  */
 
 #include <sstream>
+#include "StringHelper.h"
 #include "FtpClient.h"
 using namespace std;
 
 FtpClient::FtpClient()
 {
-	// TODO Auto-generated constructor stub
-
+	_mode = 1; // passive
 }
 
 FtpClient::~FtpClient()
@@ -20,6 +20,16 @@ FtpClient::~FtpClient()
 	_dataSocket.Close();
 	_dataListener.Close();
 	_commandSocket.Close();
+}
+
+int FtpClient::GetMode() const
+{
+	return _mode;
+}
+
+void FtpClient::SetMode(int mode)
+{
+	_mode = mode;
 }
 
 void FtpClient::Connect(const std::string& host, int port)
@@ -48,11 +58,9 @@ void FtpClient::Login(const std::string& username, const std::string& password)
 	string receiveMsg;
 	string command;
 
-	// username
 	command = "USER " + username + "\r\n";
 	receiveMsg = SendCommand(command);
 
-	// password
 	command = "PASS " + password + "\r\n";
 	receiveMsg = SendCommand(command);
 }
@@ -60,19 +68,40 @@ void FtpClient::Login(const std::string& username, const std::string& password)
 void FtpClient::ListDirectory(ostream& os)
 {
 	string receiveMsg;
-	string command = "LIST\r\n";
-	int bytesRead;
-	char buf[BUFFER_SIZE];
 
-	this->PrepareDataChannel();
-	_commandSocket.Send(command.c_str(), 0, command.length(), 0);
+	this->CreateDataChannel(os);
+	receiveMsg = SendCommand("LIST\r\n");
 
-	Socket temp = _dataListener.Accept(); // xài tạm chỗ này, không gán trực tiếp được
-	_dataSocket = temp; // xài tạm chỗ này, không gán trực tiếp được
+	if (_mode == 0) // active
+	{
+		_dataSocket = _dataListener.Accept();
+	}
 
-	this->ReceiveData(os);
-	bytesRead = _commandSocket.Receive(buf, 0, sizeof(buf), 0);
-	receiveMsg.assign(buf, bytesRead);
+	cout << receiveMsg;
+	this->StartDataChannel(os);
+
+	receiveMsg = this->ReceiveFromCommandChannel();
+	cout << receiveMsg;
+}
+
+void FtpClient::GetFile(std::ostream& os, std::string path)
+{
+	string receiveMsg;
+	string command = "RETR " + path + "\r\n";
+
+	this->CreateDataChannel(os);
+	receiveMsg = SendCommand(command);
+
+	if (_mode == 0) // active
+	{
+		_dataSocket = _dataListener.Accept();
+	}
+
+	cout << receiveMsg;
+	this->StartDataChannel(os);
+
+	receiveMsg = this->ReceiveFromCommandChannel();
+	cout << receiveMsg;
 }
 
 std::string FtpClient::SendCommand(const std::string& command)
@@ -86,19 +115,60 @@ std::string FtpClient::SendCommand(const std::string& command)
 	return string(buf, bytesRead);
 }
 
-void FtpClient::PrepareDataChannel()
+std::string FtpClient::ReceiveFromCommandChannel()
 {
-	IPEndPoint localDataEP(_commandSocket.GetLocalEndPoint().GetTextAddress(), 0);
-	_dataListener.SetProperties(AF_INET, SOCK_STREAM, 0);
-	_dataListener.Bind(localDataEP);
-	_dataListener.Listen(1);
+	int bytesRead;
+	char buf[BUFFER_SIZE];
+	bytesRead = _commandSocket.Receive(buf, 0, sizeof(buf), 0);
+	return string(buf, bytesRead);
+}
 
-	string portStr = this->FormalizePort(_dataListener.GetLocalEndPoint().GetPort());
-	string ipStr = localDataEP.GetTextAddress();
-	this->FormalizeIP(ipStr);
+void FtpClient::CreateDataChannel(std::ostream& os)
+{
+	if (_mode == 0) // active
+	{
+		IPEndPoint localDataEP(_commandSocket.GetLocalEndPoint().GetTextAddress(), 0);
+		_dataListener.SetProperties(AF_INET, SOCK_STREAM, 0);
+		_dataListener.Bind(localDataEP);
+		_dataListener.Listen(1);
 
-	string portCommand = "PORT " + ipStr + "," + portStr + "\r\n";
-	string receiveMsg = SendCommand(portCommand);
+		string portStr = this->FormalizePort(_dataListener.GetLocalEndPoint().GetPort());
+		string ipStr = localDataEP.GetTextAddress();
+		this->FormalizeIP(ipStr);
+		string portCommand = "PORT " + ipStr + "," + portStr + "\r\n";
+		string receiveMsg = SendCommand(portCommand);
+	}
+	else if (_mode == 1)// passive
+	{
+		string receiveMsg = this->SendCommand("PASV\r\n");
+		IPEndPoint remoteDataEP = this->ParsePassiveResponse(receiveMsg);
+
+		_dataSocket.SetProperties(AF_INET, SOCK_STREAM, 0);
+		_dataSocket.Connect(remoteDataEP);
+	}
+
+	//std::thread dataThread(this->StartDataChannel, std::ref(os));
+}
+
+void FtpClient::StartDataChannel(std::ostream& os)
+{
+	int bytesRead;
+	char buf[BUFFER_SIZE];
+
+	do {
+		bytesRead = _dataSocket.Receive(buf, 0, sizeof(buf), 0);
+		if (bytesRead > 0)
+		{
+			os.write(buf, bytesRead);
+		}
+		else
+		{
+			break;
+		}
+	} while (true);
+
+	_dataSocket.Shutdown(SHUT_RDWR);
+	_dataSocket.Close();
 }
 
 std::string FtpClient::FormalizePort(uint16_t port)
@@ -112,24 +182,24 @@ std::string FtpClient::FormalizePort(uint16_t port)
 
 void FtpClient::FormalizeIP(std::string& ip)
 {
-	size_t pos = 0;
-	string search = ".";
-	string replacement = ",";
-
-	while ((pos = ip.find(search, pos)) != std::string::npos)
-	{
-		ip.replace(pos, search.length(), replacement);
-		pos += replacement.length();
-	}
+	StringHelper::ReplaceAll(ip, ".", ",");
 }
 
-void FtpClient::ReceiveData(std::ostream& os)
+IPEndPoint FtpClient::ParsePassiveResponse(const string& receiveMsg)
 {
-	int bytesRead;
-	char buf[BUFFER_SIZE];
+	size_t pos1 = receiveMsg.find_last_of("(");
+	size_t pos2 = receiveMsg.find_last_of(")");
+	string endPointStr = receiveMsg.substr(pos1 + 1, pos2 - pos1 - 1);
 
-	bytesRead = _dataSocket.Receive(buf, 0, sizeof(buf), 0);
-	os.write(buf, bytesRead);
-	_dataSocket.Shutdown(SHUT_RDWR);
-	_dataSocket.Close();
+	pos1 = endPointStr.find_last_of(",");
+	pos2 = endPointStr.find_last_of(",", pos1 - 1);
+
+	string ipStr = endPointStr.substr(0, pos2);
+	StringHelper::ReplaceAll(ipStr, ",", ".");
+	string portStr1 = endPointStr.substr(pos2 + 1, pos1 - pos2 - 1);
+	string portStr2 = endPointStr.substr(pos1 + 1, endPointStr.length() - pos1);
+
+	int port = stoi(portStr1) * 256 + stoi(portStr2);
+
+	return IPEndPoint(ipStr, port);
 }
