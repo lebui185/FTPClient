@@ -34,16 +34,6 @@ void Socket::SetProperties(int addressFamily, int type, int protocol)
 	_cSocket = socket(addressFamily, type, protocol);
 }
 
-
-Socket& Socket::operator=(const Socket &other)
-{
-	this->_cSocket = other._cSocket;
-	this->_protocol = other._protocol;
-	this->_type = other._type;
-
-	return *this;
-}
-
 // Property
 
 IPEndPoint Socket::GetLocalEndPoint()

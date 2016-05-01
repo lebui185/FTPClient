@@ -66,13 +66,11 @@ void FtpClient::ListDirectory(ostream& os)
 
 	this->PrepareDataChannel();
 	_commandSocket.Send(command.c_str(), 0, command.length(), 0);
-	_dataSocket = _dataListener.Accept();
 
-	cout << _dataSocket.GetLocalEndPoint().GetTextAddress() << endl;
-	cout << _dataSocket.GetLocalEndPoint().GetPort() << endl;
+	Socket temp = _dataListener.Accept(); // xài tạm chỗ này, không gán trực tiếp được
+	_dataSocket = temp; // xài tạm chỗ này, không gán trực tiếp được
 
 	this->ReceiveData(os);
-
 	bytesRead = _commandSocket.Receive(buf, 0, sizeof(buf), 0);
 	receiveMsg.assign(buf, bytesRead);
 }
@@ -131,7 +129,7 @@ void FtpClient::ReceiveData(std::ostream& os)
 	char buf[BUFFER_SIZE];
 
 	bytesRead = _dataSocket.Receive(buf, 0, sizeof(buf), 0);
-	cout << bytesRead;
+	os.write(buf, bytesRead);
 	_dataSocket.Shutdown(SHUT_RDWR);
 	_dataSocket.Close();
 }
