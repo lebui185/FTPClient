@@ -14,17 +14,12 @@ int main()
 	string username = "lebui";
 	string password = "123";
 
-	string localPath = "Mouse love rice.mp3";
-	string remotePath = "\"/Asian/Lao Shu Ai Da Mi.mp3\"";
-	ofstream ofs(localPath);
-
 	FtpClient ftpClient;
 
-	ftpClient.Connect(serverIP, SERVER_PORT, username, password);
-	ftpClient.ListDirectory(cout);
-	ftpClient.GetFile(ofs, remotePath);
+	ftpClient.Connect(serverIP, SERVER_PORT);
+	ftpClient.Login(username, password);
+	ftpClient.GetFile("video.mp4", "funny.mp4");
 
-	ofs.close();
 
 	return 0;
 }
