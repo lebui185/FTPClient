@@ -22,6 +22,16 @@ Socket::Socket(int addressFamily, int type, int protocol)
 	_cSocket = socket(addressFamily, type, protocol);
 }
 
+
+Socket& Socket::operator=(const Socket &other)
+{
+	_type = other._type;
+	_protocol = other._protocol;
+	_cSocket = dup(other._cSocket);
+
+	return *this;
+}
+
 Socket::~Socket()
 {
     close(_cSocket);
@@ -32,16 +42,6 @@ void Socket::SetProperties(int addressFamily, int type, int protocol)
 	_type = type;
 	_protocol = protocol;
 	_cSocket = socket(addressFamily, type, protocol);
-}
-
-
-Socket& Socket::operator=(const Socket &other)
-{
-	this->_cSocket = other._cSocket;
-	this->_protocol = other._protocol;
-	this->_type = other._type;
-
-	return *this;
 }
 
 // Property
@@ -196,6 +196,7 @@ void Socket::Close()
 {
 	close(_cSocket);
 }
+
 
 void Socket::Shutdown(int how)
 {

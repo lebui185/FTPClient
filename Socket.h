@@ -18,7 +18,8 @@ public:
 	Socket(int addressFamily, int type, int protocol);
         ~Socket();
         
-	Socket& operator=(const Socket&);
+    Socket& operator=(const Socket &other);
+
 	void SetProperties(int addressFamily, int type, int protocol);
 
 	// property

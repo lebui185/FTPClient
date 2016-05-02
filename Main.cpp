@@ -1,4 +1,5 @@
 #include <iostream>
+#include <fstream>
 #include <string>
 #include "FtpClient.h"
 using namespace std;
@@ -7,36 +8,23 @@ using namespace std;
 
 int main()
 {
+	int a;
 	string serverIP = "192.168.56.2";
 	const uint16_t SERVER_PORT = 21;
 	string username = "lebui";
 	string password = "123";
 
-	IPEndPoint localEP("127.0.0.1", 12000);
-	Socket server(AF_INET, SOCK_STREAM, 0);
-	server.SetSocketOption(SOL_SOCKET, SO_REUSEADDR, 1);
-	Socket client;
+	string localPath = "Mouse love rice.mp3";
+	string remotePath = "\"/Asian/Lao Shu Ai Da Mi.mp3\"";
+	ofstream ofs(localPath);
 
-	server.Bind(localEP);
-	server.Listen(0);
-	client = server.Accept();
+	FtpClient ftpClient;
 
-	cout << client.GetRemoteEndPoint().GetTextAddress() << endl;
-	cout << client.GetRemoteEndPoint().GetPort() << endl;
+	ftpClient.Connect(serverIP, SERVER_PORT, username, password);
+	ftpClient.ListDirectory(cout);
+	ftpClient.GetFile(ofs, remotePath);
 
-	string message = "Hello";
-	client.Send(message.c_str(), 0, message.length(), 0);
-
-	client.Close();
-
-//	string serverIP = "192.168.56.2";
-//	const uint16_t SERVER_PORT = 21;
-//	string username = "lebui";
-//	string password = "123";
-//
-//	FtpClient ftpClient;
-//	ftpClient.Connect(serverIP, SERVER_PORT, username, password);
-//	ftpClient.ListDirectory(cout);
+	ofs.close();
 
 	return 0;
 }
