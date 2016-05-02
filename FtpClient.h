@@ -22,16 +22,28 @@ public:
 			const std::string& username, const std::string& password);
 	void Login(const std::string& username, const std::string& password);
 
-	void ListDirectory(std::ostream& os);
-	void GetFile(std::ostream& os, std::string path);
+	bool ListDirectory(std::ostream& os);
+	bool ChangeDirectory(const std::string &remotePath);
+	bool GetDirectory(const std::string &remotePath, const std::string &localPath);
+	bool PutDirectory(const std::string &remotePath, const std::string &localPath);
+	bool DeleteEmptyDirectory(const std::string &remotePath);
+	bool DeleteNonEmptyDirectory(const std::string &remotePath);
+
+	bool GetFile(const std::string &remotePath, std::ostream& os);
+	bool GetFile(const std::string &remotePath, const std::string &localPath);
+	bool PutFile(const std::string &remotePath, std::istream& is);
+	bool PutFile(const std::string &remotePath, const std::string &localPath);
+	bool DeleteFile(const std::string& remotePath);
+
 	int GetMode() const;
 	void SetMode(int mode);
 
 private:
 	std::string SendCommand(const std::string& command);
 	std::string ReceiveFromCommandChannel();
-	void CreateDataChannel(std::ostream& os);
-	void StartDataChannel(std::ostream& os);
+	void CreateDataChannel();
+	void ReceiveData(std::ostream& os);
+	void SendData(std::istream& is);
 	std::string FormalizePort(uint16_t port);
 	void FormalizeIP(std::string& ip);
 	IPEndPoint ParsePassiveResponse(const std::string& msg);

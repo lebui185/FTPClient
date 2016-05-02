@@ -6,6 +6,7 @@
  */
 
 #include <sstream>
+#include <fstream>
 #include "StringHelper.h"
 #include "FtpClient.h"
 using namespace std;
@@ -65,11 +66,11 @@ void FtpClient::Login(const std::string& username, const std::string& password)
 	receiveMsg = SendCommand(command);
 }
 
-void FtpClient::ListDirectory(ostream& os)
+bool FtpClient::ListDirectory(ostream& os)
 {
 	string receiveMsg;
 
-	this->CreateDataChannel(os);
+	this->CreateDataChannel();
 	receiveMsg = SendCommand("LIST\r\n");
 
 	if (_mode == 0) // active
@@ -78,18 +79,59 @@ void FtpClient::ListDirectory(ostream& os)
 	}
 
 	cout << receiveMsg;
-	this->StartDataChannel(os);
+	this->ReceiveData(os);
 
 	receiveMsg = this->ReceiveFromCommandChannel();
 	cout << receiveMsg;
+
+	return true;
 }
 
-void FtpClient::GetFile(std::ostream& os, std::string path)
+bool FtpClient::ChangeDirectory(const std::string &remotePath)
 {
 	string receiveMsg;
-	string command = "RETR " + path + "\r\n";
+	string command = "CWD " + remotePath + "\r\n";
 
-	this->CreateDataChannel(os);
+	receiveMsg = SendCommand(command);
+	cout << receiveMsg;
+
+	return true;
+}
+
+bool FtpClient::GetDirectory(const std::string& remotePath,
+		const std::string& localPath)
+{
+	return true;
+}
+
+bool FtpClient::PutDirectory(const std::string& remotePath,
+		const std::string& localPath)
+{
+	return true;
+}
+
+bool FtpClient::DeleteEmptyDirectory(const std::string& remotePath)
+{
+	string receiveMsg;
+	string command = "RMD " + remotePath + "\r\n";
+
+	receiveMsg = SendCommand(command);
+	cout << receiveMsg;
+
+	return true;
+}
+
+bool FtpClient::DeleteNonEmptyDirectory(const std::string& remotePath)
+{
+	return true;
+}
+
+bool FtpClient::GetFile(const std::string& remotePath, std::ostream& os)
+{
+	string receiveMsg;
+	string command = "RETR " + remotePath + "\r\n";
+
+	this->CreateDataChannel();
 	receiveMsg = SendCommand(command);
 
 	if (_mode == 0) // active
@@ -98,10 +140,83 @@ void FtpClient::GetFile(std::ostream& os, std::string path)
 	}
 
 	cout << receiveMsg;
-	this->StartDataChannel(os);
+	this->ReceiveData(os);
 
 	receiveMsg = this->ReceiveFromCommandChannel();
 	cout << receiveMsg;
+
+	return true;
+}
+
+bool FtpClient::GetFile(const std::string& remotePath,
+		const std::string& localPath)
+{
+	bool result;
+	ofstream ofs(localPath);
+
+	if (ofs.is_open())
+	{
+		result = this->GetFile(remotePath, ofs);
+		ofs.close();
+	}
+	else
+	{
+		result = false;
+	}
+
+	return result;
+}
+
+bool FtpClient::PutFile(const std::string& remotePath, std::istream& is)
+{
+	string receiveMsg;
+	string command = "STOR " + remotePath + "\r\n";
+
+	this->CreateDataChannel();
+	receiveMsg = SendCommand(command);
+	cout << receiveMsg;
+
+	if (_mode == 0) // active
+	{
+		_dataSocket = _dataListener.Accept();
+	}
+
+	this->SendData(is);
+
+	receiveMsg = this->ReceiveFromCommandChannel();
+	cout << receiveMsg;
+
+	return true;
+}
+
+bool FtpClient::PutFile(const std::string& remotePath,
+		const std::string& localPath)
+{
+	bool result;
+	ifstream ifs(localPath);
+
+	if (ifs.is_open())
+	{
+		result = this->PutFile(remotePath, ifs);
+		ifs.close();
+	}
+	else
+	{
+		result = false;
+	}
+
+	return result;
+}
+
+bool FtpClient::DeleteFile(const std::string& remotePath)
+{
+	string receiveMsg;
+	string command = "DELE " + remotePath + "\r\n";
+
+	receiveMsg = SendCommand(command);
+	cout << receiveMsg;
+
+	return true;
 }
 
 std::string FtpClient::SendCommand(const std::string& command)
@@ -123,7 +238,7 @@ std::string FtpClient::ReceiveFromCommandChannel()
 	return string(buf, bytesRead);
 }
 
-void FtpClient::CreateDataChannel(std::ostream& os)
+void FtpClient::CreateDataChannel()
 {
 	if (_mode == 0) // active
 	{
@@ -146,11 +261,9 @@ void FtpClient::CreateDataChannel(std::ostream& os)
 		_dataSocket.SetProperties(AF_INET, SOCK_STREAM, 0);
 		_dataSocket.Connect(remoteDataEP);
 	}
-
-	//std::thread dataThread(this->StartDataChannel, std::ref(os));
 }
 
-void FtpClient::StartDataChannel(std::ostream& os)
+void FtpClient::ReceiveData(std::ostream& os)
 {
 	int bytesRead;
 	char buf[BUFFER_SIZE];
@@ -160,6 +273,26 @@ void FtpClient::StartDataChannel(std::ostream& os)
 		if (bytesRead > 0)
 		{
 			os.write(buf, bytesRead);
+		}
+		else
+		{
+			break;
+		}
+	} while (true);
+
+	_dataSocket.Shutdown(SHUT_RDWR);
+	_dataSocket.Close();
+}
+
+void FtpClient::SendData(std::istream& is)
+{
+	char buf[BUFFER_SIZE];
+
+	do {
+		is.read(buf, BUFFER_SIZE);
+		if (is.gcount() > 0)
+		{
+			_dataSocket.Send(buf, 0, is.gcount(), 0);
 		}
 		else
 		{
