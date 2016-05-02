@@ -8,6 +8,7 @@ using namespace std;
 
 int main()
 {
+	int a;
 	string serverIP = "192.168.56.2";
 	const uint16_t SERVER_PORT = 21;
 	string username = "lebui";
