@@ -9,8 +9,9 @@
 #include <fstream>
 #include <queue>
 #include <stack>
-#include <sys/stat.h>
 #include <vector>
+#include <cstring>
+#include <sys/stat.h>
 #include "StringHelper.h"
 #include "FtpClient.h"
 using namespace std;
@@ -110,14 +111,25 @@ int FtpClient::PrintDirectory(std::ostream& os)
 	return this->GetResponseCode(response);
 }
 
+int FtpClient::MakeDirectory(const std::string& remotePath)
+{
+	string response;
+	string command = "MKD " + remotePath + "\r\n";
+
+	response = SendCommand(command);
+	cout << response;
+
+	return this->GetResponseCode(response);
+}
+
 int FtpClient::GetDirectory(std::string remotePath, const std::string& localPath)
 {
 	int result = this->ChangeDirectory(remotePath);
 
 	if (result == 250)
 	{
-		string absoluteDirectory;
-		string topDirectory;
+		string absoluteRemoteDirectory;
+		string topLocalDirectory;
 
 		if (remotePath[0] != '/')
 		{
@@ -127,21 +139,21 @@ int FtpClient::GetDirectory(std::string remotePath, const std::string& localPath
 
 			size_t pos1 = temp.find("\"");
 			size_t pos2 = temp.find("\"", pos1 + 1);
-			absoluteDirectory = temp.substr(pos1 + 1, pos2 - pos1 - 1);
+			absoluteRemoteDirectory = temp.substr(pos1 + 1, pos2 - pos1 - 1);
 		}
 		else
 		{
-			absoluteDirectory = remotePath;
+			absoluteRemoteDirectory = remotePath;
 		}
 
-		size_t pos = absoluteDirectory.rfind("/");
+		size_t pos = absoluteRemoteDirectory.rfind("/");
 		if (pos != string::npos)
 		{
-			topDirectory = absoluteDirectory.substr(pos + 1, absoluteDirectory.length() - pos - 1);
+			topLocalDirectory = absoluteRemoteDirectory.substr(pos + 1, absoluteRemoteDirectory.length() - pos - 1);
 		}
 
 		queue<Item> itemsQueue;
-		itemsQueue.push(Item(true, absoluteDirectory, localPath + "/" + topDirectory));
+		itemsQueue.push(Item(true, absoluteRemoteDirectory, localPath + "/" + topLocalDirectory));
 
 		while (!itemsQueue.empty())
 		{
@@ -184,7 +196,97 @@ int FtpClient::GetDirectory(std::string remotePath, const std::string& localPath
 
 int FtpClient::PutDirectory(const std::string& remotePath, const std::string& localPath)
 {
-	return 1;
+	int result = this->ChangeDirectory(remotePath);
+
+	if (result == 250)
+	{
+		DIR *d = opendir(localPath.c_str());
+
+		if (d)
+		{
+			string absoluteRemoteDirectory;
+			string topLocalDirectory;
+
+			if (remotePath[0] != '/')
+			{
+				ostringstream oss;
+				this->PrintDirectory(oss);
+				string temp = oss.str();
+
+				size_t pos1 = temp.find("\"");
+				size_t pos2 = temp.find("\"", pos1 + 1);
+				absoluteRemoteDirectory = temp.substr(pos1 + 1, pos2 - pos1 - 1);
+			}
+			else
+			{
+				absoluteRemoteDirectory = remotePath;
+			}
+
+			size_t pos = localPath.rfind("/");
+			if (pos != string::npos)
+			{
+				topLocalDirectory = localPath.substr(pos + 1, localPath.length() - pos - 1);
+			}
+			else
+			{
+				topLocalDirectory = localPath;
+			}
+
+			stack<Item> itemsStack;
+			itemsStack.push(Item(true, absoluteRemoteDirectory + "/" + topLocalDirectory, localPath));
+
+			closedir(d);
+
+			while (!itemsStack.empty())
+			{
+				Item currentItem = itemsStack.top();
+				itemsStack.pop();
+
+				if (currentItem.IsDirectory())
+				{
+					// Get directory info
+					DIR *d = opendir(currentItem.GetLocalPath().c_str());
+
+					if (d)
+					{
+						while (true)
+						{
+							struct dirent *entry;
+							entry = readdir(d);
+
+							if (!entry)
+							{
+								break;
+							}
+
+							cout << entry->d_name << endl;
+
+							if (strcmp(entry->d_name, "..") != 0 && strcmp(entry->d_name, ".") != 0)
+							{
+								Item item(entry, currentItem.GetRemotePath(), currentItem.GetLocalPath());
+								itemsStack.push(item);
+							}
+						}
+
+						closedir(d);
+					}
+
+					// Create remote directory
+					this->MakeDirectory(currentItem.GetRemotePath());
+				}
+				else // file
+				{
+					this->PutFile(currentItem.GetRemotePath(), currentItem.GetLocalPath());
+				}
+			}
+		}
+		else
+		{
+			result = 0;
+		}
+	}
+
+	return result;
 }
 
 int FtpClient::DeleteEmptyDirectory(const std::string& remotePath)
@@ -490,12 +592,12 @@ FtpClient::Item::Item(bool isDirectory, const std::string &remotePath, const std
 	_localPath = localPath;
 }
 
-FtpClient::Item::Item(const std::string &rawToken,
+FtpClient::Item::Item(const std::string &ftpMLSDEntry,
 		const std::string &remoteParent,
 		const std::string &localParent)
 {
 	vector<string> tokens;
-	StringHelper::Split(rawToken, tokens, ";");
+	StringHelper::Split(ftpMLSDEntry, tokens, ";");
 	string path;
 	if (tokens[0].find("dir") != string::npos)
 	{
@@ -511,6 +613,23 @@ FtpClient::Item::Item(const std::string &rawToken,
 
 	_localPath = localParent + "/" + path;
 	_remotePath = remoteParent + "/" + path;
+}
+
+FtpClient::Item::Item(dirent *entry,
+				const std::string &remoteParent,
+				const std::string &localParent)
+{
+	if (entry->d_type == DT_DIR)
+	{
+		_isDirectory = true;
+	}
+	else if (entry->d_type == DT_REG)
+	{
+		_isDirectory = false;
+	}
+
+	_remotePath = remoteParent + "/" + string(entry->d_name);
+	_localPath = localParent + "/" + string(entry->d_name);
 }
 
 void FtpClient::Item::SetIsDirectory(bool value)

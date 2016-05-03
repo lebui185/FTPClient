@@ -3,6 +3,7 @@
 
 #include <iostream>
 #include <string>
+#include <dirent.h>
 #include "Socket.h"
 
 class FtpClient
@@ -25,7 +26,10 @@ private:
 		Item();
 		Item(bool isDirectory, const std::string &remotePath);
 		Item(bool isDirectory, const std::string &remotePath, const std::string &localPath);
-		Item(const std::string &rawToken,
+		Item(const std::string &ftpMLSDEntry,
+				const std::string &remoteParent,
+				const std::string &localParent);
+		Item(dirent *entry,
 				const std::string &remoteParent,
 				const std::string &localParent);
 
@@ -48,6 +52,8 @@ public:
 	int ListDirectory(std::ostream& os);
 	int ChangeDirectory(const std::string &remotePath);
 	int PrintDirectory(std::ostream& os);
+	int MakeDirectory(const std::string &remotePath);
+
 	int GetDirectory(std::string remotePath, const std::string &localPath);
 	int PutDirectory(const std::string &remotePath, const std::string &localPath);
 	int DeleteEmptyDirectory(const std::string &remotePath);
